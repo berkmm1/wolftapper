@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wolf Tapper</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #000000;
+            color: #ffffff;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            position: relative;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        #scoreboard {
+            width: 100%;
+            text-align: center;
+            padding-top: 10px;
+            z-index: 10;
+        }
+        #score {
+            font-size: 20px;
+            margin: 5px 0;
+        }
+        #energy {
+            font-size: 16px;
+            margin: 5px 0;
+            color: #cccccc;
+        }
+        #coinContainer {
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            z-index: 5;
+        }
+        #coin {
+            width: 200px;
+            height: 200px;
+            cursor: pointer;
+            transition: transform 0.1s;
+            animation: notcoinPulse 2s infinite;
+        }
+        #coin:active {
+            transform: scale(0.95);
+        }
+        @keyframes notcoinPulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        #rocket {
+            display: none;
+            position: absolute;
+            top: -40px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 24px;
+            animation: rocketFly 2s infinite;
+            z-index: 15;
+        }
+        @keyframes rocketFly {
+            0% { transform: translateX(-50%) translateY(0); }
+            50% { transform: translateX(-50%) translateY(-20px); }
+            100% { transform: translateX(-50%) translateY(0); }
+        }
+        .button-container {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 20px;
+            box-sizing: border-box;
+            z-index: 10;
+        }
+        .wallet-button, .invite-button {
+            padding: 8px;
+            background: none;
+            border: none;
+            cursor: pointer;
+        }
+        .wallet-button img, .invite-button img {
+            width: 90px;
+            height: auto;
+        }
+        #boosters {
+            position: absolute;
+            top: 80px;
+            width: 100%;
+            text-align: center;
+            z-index: 10;
+        }
+        .boost-button {
+            padding: 5px 10px;
+            margin: 5px;
+            background-color: #ffffff;
+            color: #000000;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .boost-button:hover {
+            background-color: #cccccc;
+        }
+        #tasks {
+            position: absolute;
+            top: 120px;
+            width: 100%;
+            text-align: center;
+            font-size: 14px;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div id="scoreboard">
+        <p id="score">Skor: 0</p>
+        <p id="energy">Enerji: 100/100</p>
+    </div>
+
+    <div id="boosters">
+        <button class="boost-button" onclick="buyMultitap()">Multitap (Seviye: <span id="multitapLevel">1</span>)</button>
+        <button class="boost-button" onclick="buyEnergyBoost()">Energy Boost (Seviye: <span id="energyBoostLevel">1</span>)</button>
+    </div>
+
+    <div id="tasks">
+        <p>Görev: 100 tıklamaya ulaş! (<span id="clickCount">0</span>/100)</p>
+    </div>
+
+    <div id="coinContainer">
+        <img id="coin" src="https://i.imgur.com/kVw1MLd.png" alt="Wolf Head">
+        <div id="rocket">🚀</div>
+    </div>
+
+    <div class="button-container">
+        <button class="invite-button" onclick="inviteFriends()">
+            <img src="https://i.imgur.com/paslSwx.png" alt="Invite Friends Logo">
+        </button>
+        <button class="wallet-button" onclick="connectWallet()">
+            <img src="https://i.imgur.com/yLAWUI4.png" alt="Wallet Logo">
+        </button>
+    </div>
+
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/@tonconnect/sdk@latest/dist/tonconnect-sdk.min.js"></script>
+    <script>
+        let score = 0;
+        let energy = 100;
+        let maxEnergy = 100;
+        let clickPower = 1;
+        let rocketActive = false;
+        let clickCount = 0;
+        let multitapLevel = 1;
+        let energyBoostLevel = 1;
+
+        const scoreDisplay = document.getElementById("score");
+        const energyDisplay = document.getElementById("energy");
+        const coin = document.getElementById("coin");
+        const rocket = document.getElementById("rocket");
+        const clickCountDisplay = document.getElementById("clickCount");
+        const multitapLevelDisplay = document.getElementById("multitapLevel");
+        const energyBoostLevelDisplay = document.getElementById("energyBoostLevel");
+
+        window.Telegram.WebApp.ready();
+        const user = window.Telegram.WebApp.initDataUnsafe.user;
+
+        coin.addEventListener("click", () => {
+            if (energy > 0) {
+                score += clickPower;
+                energy--;
+                clickCount++;
+                updateDisplay();
+
+                if (clickCount >= 100) {
+                    score += 500;
+                    window.Telegram.WebApp.showAlert("Tebrikler! 100 tıklamaya ulaştın, 500 puan kazandın!");
+                    clickCount = 0;
+                }
+
+                if (score % 50 === 0 && !rocketActive) {
+                    activateRocket();
+                }
+            } else {
+                window.Telegram.WebApp.showAlert("Enerjin bitti! Bekle, doluyor...");
+                coin.style.pointerEvents = "none";
+            }
+        });
+
+        setInterval(() => {
+            if (energy < maxEnergy) {
+                energy++;
+                updateDisplay();
+                if (energy > 0) {
+                    coin.style.pointerEvents = "auto";
+                }
+            }
+        }, 1000);
+
+        function activateRocket() {
+            rocketActive = true;
+            rocket.style.display = "block";
+            clickPower = 5;
+            setTimeout(() => {
+                rocketActive = false;
+                rocket.style.display = "none";
+                clickPower = multitapLevel;
+            }, 10000);
+        }
+
+        function buyMultitap() {
+            const cost = multitapLevel * 100;
+            if (score >= cost) {
+                score -= cost;
+                multitapLevel++;
+                clickPower = multitapLevel;
+                multitapLevelDisplay.textContent = multitapLevel;
+                updateDisplay();
+                window.Telegram.WebApp.showAlert(`Multitap seviye ${multitapLevel}'e yükseltildi! Tıklama gücün: ${clickPower}`);
+            } else {
+                window.Telegram.WebApp.showAlert("Yeterli puanınız yok!");
+            }
+        }
+
+        function buyEnergyBoost() {
+            const cost = energyBoostLevel * 100;
+            if (score >= cost) {
+                score -= cost;
+                energyBoostLevel++;
+                maxEnergy += 50;
+                energy = maxEnergy;
+                energyBoostLevelDisplay.textContent = energyBoostLevel;
+                updateDisplay();
+                window.Telegram.WebApp.showAlert(`Energy Boost seviye ${energyBoostLevel}'e yükseltildi! Maksimum enerjin: ${maxEnergy}`);
+            } else {
+                window.Telegram.WebApp.showAlert("Yeterli puanınız yok!");
+            }
+        }
+
+        function updateDisplay() {
+            scoreDisplay.textContent = `Skor: ${score}`;
+            energyDisplay.textContent = `Enerji: ${energy}/${maxEnergy}`;
+            clickCountDisplay.textContent = clickCount;
+            localStorage.setItem(`score_${user ? user.id : 'guest'}`, score);
+            localStorage.setItem(`energy_${user ? user.id : 'guest'}`, energy);
+            localStorage.setItem(`clickCount_${user ? user.id : 'guest'}`, clickCount);
+            localStorage.setItem(`multitapLevel_${user ? user.id : 'guest'}`, multitapLevel);
+            localStorage.setItem(`energyBoostLevel_${user ? user.id : 'guest'}`, energyBoostLevel);
+            localStorage.setItem(`maxEnergy_${user ? user.id : 'guest'}`, maxEnergy);
+        }
+
+        window.onload = () => {
+            const userId = user ? user.id : 'guest';
+            score = parseInt(localStorage.getItem(`score_${userId}`)) || 0;
+            energy = parseInt(localStorage.getItem(`energy_${userId}`)) || 100;
+            clickCount = parseInt(localStorage.getItem(`clickCount_${userId}`)) || 0;
+            multitapLevel = parseInt(localStorage.getItem(`multitapLevel_${userId}`)) || 1;
+            energyBoostLevel = parseInt(localStorage.getItem(`energyBoostLevel_${userId}`)) || 1;
+            maxEnergy = parseInt(localStorage.getItem(`maxEnergy_${userId}`)) || 100;
+            clickPower = multitapLevel;
+            updateDisplay();
+            if (energy <= 0) {
+                coin.style.pointerEvents = "none";
+            }
+        };
+
+        const tonConnect = new TonConnectSDK.TonConnect({
+            manifestUrl: 'https://YOUR_SERVER/tonconnect-manifest.json',
+        });
+
+        async function connectWallet() {
+            try {
+                await tonConnect.connect({
+                    jsBridgeKey: 'ton-wallet',
+                    universalLink: 'https://app.tonkeeper.com/ton-connect',
+                });
+                window.Telegram.WebApp.showAlert("Cüzdan başarıyla bağlandı!");
+            } catch (error) {
+                window.Telegram.WebApp.showAlert("Cüzdan bağlanırken bir hata oluştu: " + error.message);
+            }
+        }
+
+        function inviteFriends() {
+            const inviteLink = `https://t.me/WolfTapperBot?start=${user ? user.id : 'guest'}`;
+            window.Telegram.WebApp.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=Wolf%20Tapper%20oyununa%20katıl!%20Skorum:%20${score}`);
+        }
+    </script>
+</html>
